@@ -1,5 +1,9 @@
 import os
 import threading
+import hashlib
+import hmac
+import secrets
+
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -18,11 +22,14 @@ load_dotenv()
 
 try:
 
-    if "OPENAI_API_KEY" in st.secrets:
-
-        os.environ["OPENAI_API_KEY"] = (
-            st.secrets["OPENAI_API_KEY"]
-        )
+  if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = (
+        str(st.secrets["OPENAI_API_KEY"]).strip()
+    )
+  elif os.getenv("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = (
+        os.getenv("OPENAI_API_KEY").strip()
+    )
 
 except Exception:
     pass
@@ -39,8 +46,12 @@ from status import (
     get_status
 )
 
+from status import fail_project
+
 from database import (
-    get_recent_projects
+    get_recent_projects,
+    create_user,
+    get_user
 )
 
 
@@ -55,78 +66,294 @@ st.set_page_config(
 )
 
 
-# --------------------------------
-# Authentication
-# --------------------------------
+# =================================
+# PASSWORD SECURITY
+# =================================
 
-def check_password():
+def hash_password(password):
+
+    salt = secrets.token_bytes(16)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        100_000
+    )
+
+    return (
+        salt.hex()
+        + ":"
+        + password_hash.hex()
+    )
+
+
+def verify_password(
+    password,
+    stored_password
+):
 
     try:
-        app_password = st.secrets["APP_PASSWORD"]
+
+        salt_hex, hash_hex = (
+            stored_password.split(":")
+        )
+
+        salt = bytes.fromhex(
+            salt_hex
+        )
+
+        stored_hash = bytes.fromhex(
+            hash_hex
+        )
+
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt,
+            100_000
+        )
+
+        return hmac.compare_digest(
+            password_hash,
+            stored_hash
+        )
 
     except Exception:
 
-        app_password = os.getenv(
-            "APP_PASSWORD"
-        )
+        return False
 
-    if not app_password:
 
-        return True
+# =================================
+# AUTHENTICATION
+# =================================
 
-    if "authenticated" not in st.session_state:
+def authentication_page():
 
-        st.session_state.authenticated = False
-
-    if st.session_state.authenticated:
-
-        return True
-
-    st.title("🔐 AI Software Development Team")
-
-    password = st.text_input(
-        "Enter application password",
-        type="password"
+    st.title(
+        "🤖 AI Software Development Team"
     )
 
-    if st.button("Login"):
+    # --------------------------------
+    # Login / Register tabs
+    # --------------------------------
 
-        if password == app_password:
+    login_tab, register_tab = st.tabs(
+        [
+            "🔐 Login",
+            "📝 Register"
+        ]
+    )
 
-            st.session_state.authenticated = True
+    # =================================
+    # LOGIN
+    # =================================
 
-            st.rerun()
+    with login_tab:
 
-        else:
+        st.subheader(
+            "Login"
+        )
 
-            st.error(
-                "Incorrect password."
-            )
+        username = st.text_input(
+            "Username",
+            key="login_username"
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password"
+        )
+
+        if st.button(
+            "Login",
+            type="primary",
+            key="login_button"
+        ):
+
+            username = username.strip()
+
+            if not username or not password:
+
+                st.error(
+                    "Please enter username and password."
+                )
+
+            else:
+
+                user = get_user(
+                    username
+                )
+
+                if user and verify_password(
+                    password,
+                    user["password_hash"]
+                ):
+
+                    st.session_state.authenticated = True
+
+                    st.session_state.username = username
+
+                    st.success(
+                        "Login successful!"
+                    )
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Invalid username or password."
+                    )
+
+    # =================================
+    # REGISTER
+    # =================================
+
+    with register_tab:
+
+        st.subheader(
+            "Create Account"
+        )
+
+        new_username = st.text_input(
+            "Choose a username",
+            key="register_username"
+        )
+
+        new_password = st.text_input(
+            "Choose a password",
+            type="password",
+            key="register_password"
+        )
+
+        confirm_password = st.text_input(
+            "Confirm password",
+            type="password",
+            key="confirm_password"
+        )
+
+        if st.button(
+            "Create Account",
+            type="primary",
+            key="register_button"
+        ):
+
+            new_username = new_username.strip()
+
+            # Username validation
+
+            if not new_username:
+
+                st.error(
+                    "Username cannot be empty."
+                )
+
+            elif len(new_username) < 3:
+
+                st.error(
+                    "Username must be at least 3 characters."
+                )
+
+            # Password validation
+
+            elif len(new_password) < 8:
+
+                st.error(
+                    "Password must be at least 8 characters."
+                )
+
+            # Confirm password
+
+            elif new_password != confirm_password:
+
+                st.error(
+                    "Passwords do not match."
+                )
+
+            else:
+
+                password_hash = hash_password(
+                    new_password
+                )
+
+                created = create_user(
+                    new_username,
+                    password_hash
+                )
+
+                if created:
+
+                    st.success(
+                        "Account created successfully! "
+                        "Go to the Login tab."
+                    )
+
+                else:
+
+                    st.error(
+                        "Username already exists."
+                    )
 
     return False
 
 
-if not check_password():
+# =================================
+# CHECK AUTHENTICATION
+# =================================
+
+if "authenticated" not in st.session_state:
+
+    st.session_state.authenticated = False
+
+
+if not st.session_state.authenticated:
+
+    authentication_page()
 
     st.stop()
 
 
-# --------------------------------
-# Header
-# --------------------------------
+# =================================
+# MAIN APPLICATION
+# =================================
 
 st.title(
     "🤖 AI Software Development Team"
 )
 
 st.write(
-    "Build software with a team of specialized AI agents."
+    f"Welcome, **{st.session_state.username}** 👋"
 )
 
 
 # --------------------------------
-# Project input
+# Logout
 # --------------------------------
+
+if st.button(
+    "🚪 Logout"
+):
+
+    st.session_state.authenticated = False
+
+    st.session_state.username = ""
+
+    st.rerun()
+
+
+st.divider()
+
+
+# =================================
+# PROJECT INPUT
+# =================================
+
+st.subheader(
+    "🚀 Create a Software Project"
+)
+
 
 project_idea = st.text_area(
     "What do you want to build?",
@@ -136,10 +363,6 @@ project_idea = st.text_area(
     height=120
 )
 
-
-# --------------------------------
-# Start project
-# --------------------------------
 
 if st.button(
     "🚀 Start AI Team",
@@ -184,8 +407,6 @@ if st.button(
 
                 except Exception as error:
 
-                    from status import fail_project
-
                     fail_project(error)
 
 
@@ -196,16 +417,14 @@ if st.button(
 
             thread.start()
 
-            st.session_state.project_started = True
-
             st.success(
                 "AI team started!"
             )
 
 
-# --------------------------------
-# Live status dashboard
-# --------------------------------
+# =================================
+# LIVE STATUS
+# =================================
 
 st.divider()
 
@@ -248,7 +467,6 @@ def live_status():
                     f"⏳ {agent}\n\nWAITING"
                 )
 
-
     project = current_status["project"]
 
     st.write(
@@ -260,7 +478,6 @@ def live_status():
         "**Status:**",
         project["state"]
     )
-
 
     if project["state"] == "completed":
 
@@ -276,7 +493,6 @@ def live_status():
             project["result"]
         )
 
-
     elif project["state"] == "error":
 
         st.error(
@@ -291,9 +507,9 @@ def live_status():
 live_status()
 
 
-# --------------------------------
-# Project history
-# --------------------------------
+# =================================
+# PROJECT HISTORY
+# =================================
 
 st.divider()
 

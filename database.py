@@ -24,6 +24,7 @@ def init_database():
 
     connection = get_connection()
 
+    # Project history table
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS projects (
@@ -38,9 +39,25 @@ def init_database():
         """
     )
 
+    # Users table
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
     connection.commit()
     connection.close()
 
+
+# --------------------------------
+# PROJECT FUNCTIONS
+# --------------------------------
 
 def create_project(project_idea):
 
@@ -51,7 +68,14 @@ def create_project(project_idea):
     cursor = connection.execute(
         """
         INSERT INTO projects
-        (project_idea, state, result, error, created_at, updated_at)
+        (
+            project_idea,
+            state,
+            result,
+            error,
+            created_at,
+            updated_at
+        )
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
@@ -121,7 +145,80 @@ def get_recent_projects(limit=20):
 
     connection.close()
 
-    return [dict(row) for row in rows]
+    return [
+        dict(row)
+        for row in rows
+    ]
 
+
+# --------------------------------
+# USER FUNCTIONS
+# --------------------------------
+
+def create_user(
+    username,
+    password_hash
+):
+
+    now = datetime.utcnow().isoformat()
+
+    connection = get_connection()
+
+    try:
+
+        connection.execute(
+            """
+            INSERT INTO users
+            (
+                username,
+                password_hash,
+                created_at
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                username,
+                password_hash,
+                now
+            )
+        )
+
+        connection.commit()
+
+        return True
+
+    except sqlite3.IntegrityError:
+
+        return False
+
+    finally:
+
+        connection.close()
+
+
+def get_user(username):
+
+    connection = get_connection()
+
+    row = connection.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE username = ?
+        """,
+        (username,)
+    ).fetchone()
+
+    connection.close()
+
+    if row:
+        return dict(row)
+
+    return None
+
+
+# --------------------------------
+# INITIALIZE DATABASE
+# --------------------------------
 
 init_database()
