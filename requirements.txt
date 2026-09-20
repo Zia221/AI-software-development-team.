@@ -1,0 +1,9 @@
+crewai
+chromadb
+fastapi
+uvicorn
+pydantic
+python-dotenv
+streamlit>=1.63,<2
+pytest
+httpx

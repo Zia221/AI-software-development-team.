@@ -1,0 +1,17 @@
+# Project Coding Standards
+
+1. Write readable Python code.
+
+2. Use meaningful variable and function names.
+
+3. Keep functions small and focused.
+
+4. Add comments when the logic is difficult to understand.
+
+5. Handle errors properly.
+
+6. Avoid unnecessary duplicate code.
+
+7. Write tests for important functionality.
+
+8. Keep secrets such as API keys in environment variables.

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <title>AI Software Development Team</title>
+
+    <style>
+
+        body {
+
+            font-family: Arial, sans-serif;
+
+            background: #111827;
+
+            color: white;
+
+            max-width: 900px;
+
+            margin: 40px auto;
+
+            padding: 20px;
+        }
+
+
+        textarea {
+
+            width: 100%;
+
+            height: 120px;
+
+            padding: 15px;
+
+            font-size: 16px;
+
+            border-radius: 8px;
+        }
+
+
+        button {
+
+            margin-top: 15px;
+
+            padding: 12px 20px;
+
+            font-size: 16px;
+
+            cursor: pointer;
+
+            border-radius: 8px;
+
+            border: none;
+        }
+
+
+        .agent {
+
+            background: #1f2937;
+
+            padding: 15px;
+
+            margin: 10px 0;
+
+            border-radius: 8px;
+        }
+
+
+        .working {
+
+            border-left: 5px solid orange;
+        }
+
+
+        .completed {
+
+            border-left: 5px solid green;
+        }
+
+
+        .waiting {
+
+            border-left: 5px solid gray;
+        }
+
+
+        .error {
+
+            border-left: 5px solid red;
+        }
+
+
+        #result {
+
+            background: #1f2937;
+
+            padding: 20px;
+
+            white-space: pre-wrap;
+
+            border-radius: 8px;
+
+            margin-top: 20px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+    <h1>🤖 AI Software Development Team</h1>
+
+
+    <p>
+
+        Describe the software you want the AI team to build.
+
+    </p>
+
+
+    <textarea
+        id="projectIdea"
+        placeholder="Example: Build a food delivery application"
+    ></textarea>
+
+
+    <br>
+
+
+    <button
+        id="startButton"
+        onclick="startProject()"
+    >
+
+        🚀 Start Project
+
+    </button>
+
+
+    <h2>👥 Team Status</h2>
+
+
+    <div id="teamStatus">
+
+        <div class="agent waiting">
+
+            Product Manager — waiting
+
+        </div>
+
+
+        <div class="agent waiting">
+
+            Software Architect — waiting
+
+        </div>
+
+
+        <div class="agent waiting">
+
+            Developer — waiting
+
+        </div>
+
+
+        <div class="agent waiting">
+
+            QA Engineer — waiting
+
+        </div>
+
+    </div>
+
+
+    <h2>📄 Final Result</h2>
+
+
+    <div id="result">
+
+        No project started yet.
+
+    </div>
+
+
+<script>
+
+
+let socket = null;
+
+
+async function startProject() {
+
+
+    const projectIdea =
+        document.getElementById("projectIdea").value;
+
+
+    if (!projectIdea.trim()) {
+
+        alert("Please enter a project idea.");
+
+        return;
+
+    }
+
+
+    const button =
+        document.getElementById("startButton");
+
+
+    button.disabled = true;
+
+
+    document.getElementById("result").textContent =
+        "🤖 AI team is starting...";
+
+
+    await fetch("/projects", {
+
+        method: "POST",
+
+        headers: {
+
+            "Content-Type": "application/json"
+
+        },
+
+        body: JSON.stringify({
+
+            project_idea: projectIdea
+
+        })
+
+    });
+
+
+    connectWebSocket();
+
+}
+
+
+function connectWebSocket() {
+
+
+    socket = new WebSocket(
+
+        `ws://${window.location.host}/ws`
+
+    );
+
+
+    socket.onmessage = function(event) {
+
+
+        const data = JSON.parse(event.data);
+
+
+        updateDashboard(data);
+
+
+        if (
+
+            data.project.state === "completed" ||
+
+            data.project.state === "error"
+
+        ) {
+
+            socket.close();
+
+            document.getElementById(
+                "startButton"
+            ).disabled = false;
+
+        }
+
+    };
+
+
+    socket.onerror = function() {
+
+        document.getElementById(
+            "result"
+        ).textContent =
+            "❌ WebSocket connection error.";
+
+    };
+
+}
+
+
+function updateDashboard(data) {
+
+
+    const container =
+        document.getElementById("teamStatus");
+
+
+    container.innerHTML = "";
+
+
+    for (
+        const [agent, status]
+        of Object.entries(data.agents)
+    ) {
+
+
+        const div =
+            document.createElement("div");
+
+
+        div.className =
+            `agent ${status}`;
+
+
+        div.textContent =
+            `${agent} — ${status}`;
+
+
+        container.appendChild(div);
+
+    }
+
+
+    if (data.project.state === "completed") {
+
+
+        document.getElementById(
+            "result"
+        ).textContent =
+            data.project.result;
+
+    }
+
+
+    if (data.project.state === "error") {
+
+
+        document.getElementById(
+            "result"
+        ).textContent =
+            `❌ Error: ${data.project.error}`;
+
+    }
+
+}
+
+</script>
+
+
+</body>
+
+</html>
